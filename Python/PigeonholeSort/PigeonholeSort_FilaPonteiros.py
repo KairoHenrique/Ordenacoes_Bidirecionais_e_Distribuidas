@@ -1,0 +1,130 @@
+import csv
+import time
+import sys
+from typing import Optional
+
+MAX_DADOS = 1000000
+COLUNA_ORDENACAO = 2
+
+class NoFila:
+    def __init__(self, valor):
+        self.valor = valor
+        self.proximo = None
+
+class FilaPonteiros:
+    def __init__(self):
+        self.frente = None
+        self.final = None
+        self.tamanho = 0
+
+    def enfileirar(self, item):
+        novo_no = NoFila(item)
+        if self.final is None:
+            self.frente = self.final = novo_no
+        else:
+            self.final.proximo = novo_no
+            self.final = novo_no
+        self.tamanho += 1
+
+    def desenfileirar(self):
+        if self.frente is None:
+            raise IndexError("Fila vazia")
+        item = self.frente.valor
+        self.frente = self.frente.proximo
+        if self.frente is None:
+            self.final = None
+        self.tamanho -= 1
+        return item
+
+    def esta_vazia(self):
+        return self.frente is None
+
+    def para_lista(self):
+        lista = []
+        atual = self.frente
+        while atual:
+            lista.append(atual.valor)
+            atual = atual.proximo
+        return lista
+
+def ler_csv(nome_arquivo: str, max_dados: int) -> FilaPonteiros:
+    dados = FilaPonteiros()
+    try:
+        with open(nome_arquivo, 'r') as arquivo:
+            leitor = csv.reader(arquivo)
+            next(leitor)
+            for i, linha in enumerate(leitor):
+                if i >= max_dados:
+                    break
+                try:
+                    registro = {
+                        'userId': linha[0],
+                        'movieId': linha[1],
+                        'rating': float(linha[2]),
+                        'timestamp': linha[3]
+                    }
+                    dados.enfileirar(registro)
+                except (IndexError, ValueError) as e:
+                    print(f"Erro ao processar linha {i}: {e}")
+    except FileNotFoundError:
+        print(f"Arquivo {nome_arquivo} não encontrado.")
+        sys.exit(1)
+    return dados
+
+def pigeonhole_sort_fila_ponteiros(fila: FilaPonteiros) -> FilaPonteiros:
+    if fila.esta_vazia():
+        return FilaPonteiros()
+
+    lista = fila.para_lista()
+    min_rating = 0.5
+    max_rating = 5.0
+    num_pigeonholes = int((max_rating - min_rating) * 2) + 1
+
+    pigeonholes = [FilaPonteiros() for _ in range(num_pigeonholes)]
+
+    for item in lista:
+        index = int((item['rating'] - min_rating) * 2)
+        pigeonholes[index].enfileirar(item)
+
+    resultado = FilaPonteiros()
+    for hole in pigeonholes:
+        while not hole.esta_vazia():
+            resultado.enfileirar(hole.desenfileirar())
+
+    return resultado
+
+def escrever_csv(nome_arquivo: str, fila: FilaPonteiros):
+    with open(nome_arquivo, 'w', newline='') as arquivo:
+        escritor = csv.writer(arquivo)
+        escritor.writerow(['userId', 'movieId', 'rating', 'timestamp'])
+        atual = fila.frente
+        while atual:
+            escritor.writerow([
+                atual.valor['userId'],
+                atual.valor['movieId'],
+                atual.valor['rating'],
+                atual.valor['timestamp']
+            ])
+            atual = atual.proximo
+
+def main():
+    inicio = time.time()
+
+    print("Lendo dados...")
+    dados = ler_csv('ratings.csv', MAX_DADOS)
+    if dados.esta_vazia():
+        print("Nenhum dado foi lido.")
+        return
+
+    print(f"Ordenando {dados.tamanho} registros...")
+    dados_ordenados = pigeonhole_sort_fila_ponteiros(dados)
+
+    print("Escrevendo arquivo de saída...")
+    escrever_csv('ratings_pigeonholesort_filaponteiros.csv', dados_ordenados)
+
+    tempo_total = time.time() - inicio
+    print(f"Concluído! Tempo total: {tempo_total:.2f} segundos")
+    print(f"Total de elementos processados: {dados.tamanho}")
+
+if __name__ == "__main__":
+    main()
